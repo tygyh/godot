@@ -162,7 +162,7 @@ private:
 	Vector<int> parentless_bones;
 	AHashMap<String, int> name_to_bone_index;
 
-	mutable StringName concatenated_bone_names = StringName();
+	mutable StringName concatenated_bone_names;
 	void _update_bone_names() const;
 
 	void _make_dirty();
@@ -284,6 +284,7 @@ public:
 	void force_update_all_dirty_bones();
 	void force_update_all_bone_transforms();
 	void force_update_bone_children_transforms(int bone_idx);
+	void force_update_deferred();
 
 	void set_modifier_callback_mode_process(ModifierCallbackModeProcess p_mode);
 	ModifierCallbackModeProcess get_modifier_callback_mode_process() const;

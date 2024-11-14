@@ -258,7 +258,7 @@ void VisualShaderGraphPlugin::show_port_preview(VisualShader::Type p_type, int p
 			vbox->add_child(offset);
 
 			VisualShaderNodePortPreview *port_preview = memnew(VisualShaderNodePortPreview);
-			port_preview->setup(visual_shader, editor->preview_material, visual_shader->get_shader_type(), p_node_id, p_port_id, p_is_valid);
+			port_preview->setup(visual_shader, editor->preview_material, visual_shader->get_shader_type(), links[p_node_id].output_ports[p_port_id].type == VisualShaderNode::PORT_TYPE_VECTOR_4D, p_node_id, p_port_id, p_is_valid);
 			port_preview->set_h_size_flags(Control::SIZE_SHRINK_CENTER);
 			vbox->add_child(port_preview);
 			link.preview_visible = true;
@@ -554,8 +554,8 @@ void VisualShaderGraphPlugin::register_link(VisualShader::Type p_type, int p_id,
 	links.insert(p_id, { p_type, p_visual_node, p_graph_element, p_visual_node->get_output_port_for_preview() != -1, -1, HashMap<int, InputPort>(), HashMap<int, Port>(), nullptr, nullptr, nullptr, { nullptr, nullptr, nullptr } });
 }
 
-void VisualShaderGraphPlugin::register_output_port(int p_node_id, int p_port, TextureButton *p_button) {
-	links[p_node_id].output_ports.insert(p_port, { p_button });
+void VisualShaderGraphPlugin::register_output_port(int p_node_id, int p_port, VisualShaderNode::PortType p_port_type, TextureButton *p_button) {
+	links[p_node_id].output_ports.insert(p_port, { p_port_type, p_button });
 }
 
 void VisualShaderGraphPlugin::register_parameter_name(int p_node_id, LineEdit *p_parameter_name) {
@@ -1138,7 +1138,7 @@ void VisualShaderGraphPlugin::add_node(VisualShader::Type p_type, int p_id, bool
 					name_box->connect(SceneStringName(focus_exited), callable_mp(editor, &VisualShaderEditor::_port_name_focus_out).bind(name_box, p_id, j, false), CONNECT_DEFERRED);
 
 					Button *remove_btn = memnew(Button);
-					remove_btn->set_icon(EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("Remove"), EditorStringName(EditorIcons)));
+					remove_btn->set_button_icon(EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("Remove"), EditorStringName(EditorIcons)));
 					remove_btn->set_tooltip_text(TTR("Remove") + " " + name_left);
 					remove_btn->connect(SceneStringName(pressed), callable_mp(editor, &VisualShaderEditor::_remove_input_port).bind(p_id, j), CONNECT_DEFERRED);
 					hb->add_child(remove_btn);
@@ -1166,7 +1166,7 @@ void VisualShaderGraphPlugin::add_node(VisualShader::Type p_type, int p_id, bool
 			if (valid_right) {
 				if (is_group) {
 					Button *remove_btn = memnew(Button);
-					remove_btn->set_icon(EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("Remove"), EditorStringName(EditorIcons)));
+					remove_btn->set_button_icon(EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("Remove"), EditorStringName(EditorIcons)));
 					remove_btn->set_tooltip_text(TTR("Remove") + " " + name_left);
 					remove_btn->connect(SceneStringName(pressed), callable_mp(editor, &VisualShaderEditor::_remove_output_port).bind(p_id, i), CONNECT_DEFERRED);
 					hb->add_child(remove_btn);
@@ -1220,7 +1220,7 @@ void VisualShaderGraphPlugin::add_node(VisualShader::Type p_type, int p_id, bool
 				preview->set_texture_pressed(editor->get_editor_theme_icon(SNAME("GuiVisibilityVisible")));
 				preview->set_v_size_flags(Control::SIZE_SHRINK_CENTER);
 
-				register_output_port(p_id, j, preview);
+				register_output_port(p_id, j, port_right, preview);
 
 				preview->connect(SceneStringName(pressed), callable_mp(editor, &VisualShaderEditor::_preview_select_port).bind(p_id, j), CONNECT_DEFERRED);
 				hb->add_child(preview);
@@ -1472,7 +1472,7 @@ void VisualShaderGraphPlugin::disconnect_nodes(VisualShader::Type p_type, int p_
 	if (visual_shader.is_valid() && visual_shader->get_shader_type() == p_type) {
 		graph->disconnect_node(itos(p_from_node), p_from_port, itos(p_to_node), p_to_port);
 
-		for (const List<VisualShader::Connection>::Element *E = connections.front(); E; E = E->next()) {
+		for (List<VisualShader::Connection>::Element *E = connections.front(); E; E = E->next()) {
 			if (E->get().from_node == p_from_node && E->get().from_port == p_from_port && E->get().to_node == p_to_node && E->get().to_port == p_to_port) {
 				connections.erase(E);
 				break;
@@ -1983,6 +1983,67 @@ bool VisualShaderEditor::_update_preview_parameter_tree() {
 	}
 
 	return found;
+}
+
+void VisualShaderEditor::_preview_tools_menu_option(int p_idx) {
+	ShaderMaterial *src_mat = nullptr;
+
+	if (p_idx == COPY_PARAMS_FROM_MATERIAL || p_idx == PASTE_PARAMS_TO_MATERIAL) {
+		for (int i = EditorNode::get_singleton()->get_editor_selection_history()->get_path_size() - 1; i >= 0; i--) {
+			Object *object = ObjectDB::get_instance(EditorNode::get_singleton()->get_editor_selection_history()->get_path_object(i));
+			ShaderMaterial *src_mat2;
+			if (!object) {
+				continue;
+			}
+			if (object->has_method("get_material_override")) { // Trying to get material from MeshInstance.
+				src_mat2 = Object::cast_to<ShaderMaterial>(object->call("get_material_override"));
+			} else if (object->has_method("get_material")) { // From CanvasItem/Node2D.
+				src_mat2 = Object::cast_to<ShaderMaterial>(object->call("get_material"));
+			} else {
+				src_mat2 = Object::cast_to<ShaderMaterial>(object);
+			}
+
+			if (src_mat2 && src_mat2->get_shader().is_valid() && src_mat2->get_shader() == visual_shader) {
+				src_mat = src_mat2;
+				break;
+			}
+		}
+	}
+
+	switch (p_idx) {
+		case COPY_PARAMS_FROM_MATERIAL:
+			if (src_mat) {
+				EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
+				undo_redo->create_action(TTR("Copy Preview Shader Parameters From Material"));
+
+				List<PropertyInfo> params;
+				preview_material->get_shader()->get_shader_uniform_list(&params);
+				for (const PropertyInfo &E : params) {
+					undo_redo->add_do_method(visual_shader.ptr(), "_set_preview_shader_parameter", E.name, src_mat->get_shader_parameter(E.name));
+					undo_redo->add_undo_method(visual_shader.ptr(), "_set_preview_shader_parameter", E.name, preview_material->get_shader_parameter(E.name));
+				}
+
+				undo_redo->commit_action();
+			}
+			break;
+		case PASTE_PARAMS_TO_MATERIAL:
+			if (src_mat) {
+				EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
+				undo_redo->create_action(TTR("Paste Preview Shader Parameters To Material"));
+
+				List<PropertyInfo> params;
+				preview_material->get_shader()->get_shader_uniform_list(&params);
+				for (const PropertyInfo &E : params) {
+					undo_redo->add_do_method(src_mat, "set_shader_parameter", E.name, preview_material->get_shader_parameter(E.name));
+					undo_redo->add_undo_method(src_mat, "set_shader_parameter", E.name, src_mat->get_shader_parameter(E.name));
+				}
+
+				undo_redo->commit_action();
+			}
+			break;
+		default:
+			break;
+	}
 }
 
 void VisualShaderEditor::_clear_preview_param() {
@@ -5106,8 +5167,8 @@ void VisualShaderEditor::_notification(int p_what) {
 			param_filter->set_right_icon(Control::get_editor_theme_icon(SNAME("Search")));
 			node_filter->set_right_icon(Control::get_editor_theme_icon(SNAME("Search")));
 
-			code_preview_button->set_icon(Control::get_editor_theme_icon(SNAME("Shader")));
-			shader_preview_button->set_icon(Control::get_editor_theme_icon(SNAME("SubViewport")));
+			code_preview_button->set_button_icon(Control::get_editor_theme_icon(SNAME("Shader")));
+			shader_preview_button->set_button_icon(Control::get_editor_theme_icon(SNAME("SubViewport")));
 
 			{
 				Color background_color = EDITOR_GET("text_editor/theme/highlighting/background_color");
@@ -5158,7 +5219,8 @@ void VisualShaderEditor::_notification(int p_what) {
 				error_label->end_bulk_theme_override();
 			}
 
-			tools->set_icon(get_editor_theme_icon(SNAME("Tools")));
+			tools->set_button_icon(get_editor_theme_icon(SNAME("Tools")));
+			preview_tools->set_button_icon(get_editor_theme_icon(SNAME("Tools")));
 
 			if (is_visible_in_tree()) {
 				_update_graph();
@@ -6555,11 +6617,21 @@ VisualShaderEditor::VisualShaderEditor() {
 	VBoxContainer *params_vbox = memnew(VBoxContainer);
 	preview_split->add_child(params_vbox);
 
+	HBoxContainer *filter_hbox = memnew(HBoxContainer);
+	params_vbox->add_child(filter_hbox);
+
 	param_filter = memnew(LineEdit);
+	filter_hbox->add_child(param_filter);
 	param_filter->connect(SceneStringName(text_changed), callable_mp(this, &VisualShaderEditor::_param_filter_changed));
 	param_filter->set_h_size_flags(SIZE_EXPAND_FILL);
 	param_filter->set_placeholder(TTR("Filter Parameters"));
-	params_vbox->add_child(param_filter);
+
+	preview_tools = memnew(MenuButton);
+	filter_hbox->add_child(preview_tools);
+	preview_tools->set_tooltip_text(TTR("Options"));
+	preview_tools->get_popup()->connect(SceneStringName(id_pressed), callable_mp(this, &VisualShaderEditor::_preview_tools_menu_option));
+	preview_tools->get_popup()->add_item(TTR("Copy Parameters From Material"), COPY_PARAMS_FROM_MATERIAL);
+	preview_tools->get_popup()->add_item(TTR("Paste Parameters To Material"), PASTE_PARAMS_TO_MATERIAL);
 
 	ScrollContainer *sc = memnew(ScrollContainer);
 	sc->set_v_size_flags(SIZE_EXPAND_FILL);
@@ -8031,7 +8103,15 @@ void VisualShaderNodePortPreview::_shader_changed() {
 	set_material(mat);
 }
 
-void VisualShaderNodePortPreview::setup(const Ref<VisualShader> &p_shader, Ref<ShaderMaterial> &p_preview_material, VisualShader::Type p_type, int p_node, int p_port, bool p_is_valid) {
+void VisualShaderNodePortPreview::setup(const Ref<VisualShader> &p_shader, Ref<ShaderMaterial> &p_preview_material, VisualShader::Type p_type, bool p_has_transparency, int p_node, int p_port, bool p_is_valid) {
+	if (p_has_transparency) {
+		checkerboard = memnew(TextureRect);
+		checkerboard->set_stretch_mode(TextureRect::STRETCH_TILE);
+		checkerboard->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
+		checkerboard->set_draw_behind_parent(true);
+		add_child(checkerboard);
+	}
+
 	shader = p_shader;
 	shader->connect_changed(callable_mp(this, &VisualShaderNodePortPreview::_shader_changed), CONNECT_DEFERRED);
 	preview_mat = p_preview_material;
@@ -8050,6 +8130,11 @@ Size2 VisualShaderNodePortPreview::get_minimum_size() const {
 
 void VisualShaderNodePortPreview::_notification(int p_what) {
 	switch (p_what) {
+		case NOTIFICATION_THEME_CHANGED: {
+			if (checkerboard != nullptr) {
+				checkerboard->set_texture(get_theme_icon(SNAME("GuiMiniCheckerboard"), EditorStringName(EditorIcons)));
+			}
+		} break;
 		case NOTIFICATION_DRAW: {
 			Vector<Vector2> points = {
 				Vector2(),

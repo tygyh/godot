@@ -1083,6 +1083,7 @@ public:
 	Error screen_prepare_for_drawing(DisplayServer::WindowID p_screen = DisplayServer::MAIN_WINDOW_ID);
 	int screen_get_width(DisplayServer::WindowID p_screen = DisplayServer::MAIN_WINDOW_ID) const;
 	int screen_get_height(DisplayServer::WindowID p_screen = DisplayServer::MAIN_WINDOW_ID) const;
+	int screen_get_pre_rotation_degrees(DisplayServer::WindowID p_screen = DisplayServer::MAIN_WINDOW_ID) const;
 	FramebufferFormatID screen_get_framebuffer_format(DisplayServer::WindowID p_screen = DisplayServer::MAIN_WINDOW_ID) const;
 	Error screen_free(DisplayServer::WindowID p_screen = DisplayServer::MAIN_WINDOW_ID);
 
@@ -1186,6 +1187,7 @@ public:
 	void draw_list_set_push_constant(DrawListID p_list, const void *p_data, uint32_t p_data_size);
 
 	void draw_list_draw(DrawListID p_list, bool p_use_indices, uint32_t p_instances = 1, uint32_t p_procedural_vertices = 0);
+	void draw_list_draw_indirect(DrawListID p_list, bool p_use_indices, RID p_buffer, uint32_t p_offset = 0, uint32_t p_draw_count = 1, uint32_t p_stride = 0);
 
 	void draw_list_enable_scissor(DrawListID p_list, const Rect2 &p_rect);
 	void draw_list_disable_scissor(DrawListID p_list);
@@ -1283,6 +1285,7 @@ private:
 	LocalVector<uint32_t> transfer_worker_pool_available_list;
 	LocalVector<RDD::TextureBarrier> transfer_worker_pool_texture_barriers;
 	BinaryMutex transfer_worker_pool_mutex;
+	BinaryMutex transfer_worker_pool_texture_barriers_mutex;
 	ConditionVariable transfer_worker_pool_condition;
 
 	TransferWorker *_acquire_transfer_worker(uint32_t p_transfer_size, uint32_t p_required_align, uint32_t &r_staging_offset);
@@ -1297,6 +1300,7 @@ private:
 	void _check_transfer_worker_vertex_array(VertexArray *p_vertex_array);
 	void _check_transfer_worker_index_array(IndexArray *p_index_array);
 	void _submit_transfer_workers(RDD::CommandBufferID p_draw_command_buffer = RDD::CommandBufferID());
+	void _submit_transfer_barriers(RDD::CommandBufferID p_draw_command_buffer);
 	void _wait_for_transfer_workers();
 	void _free_transfer_workers();
 
@@ -1426,6 +1430,8 @@ private:
 public:
 	Error initialize(RenderingContextDriver *p_context, DisplayServer::WindowID p_main_window = DisplayServer::INVALID_WINDOW_ID);
 	void finalize();
+
+	void _set_max_fps(int p_max_fps);
 
 	void free(RID p_id);
 

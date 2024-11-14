@@ -107,6 +107,7 @@ private:
 	};
 
 	struct Port {
+		VisualShaderNode::PortType type = VisualShaderNode::PORT_TYPE_SCALAR;
 		TextureButton *preview_button = nullptr;
 	};
 
@@ -141,7 +142,7 @@ public:
 	void register_shader(VisualShader *p_visual_shader);
 	void set_connections(const List<VisualShader::Connection> &p_connections);
 	void register_link(VisualShader::Type p_type, int p_id, VisualShaderNode *p_visual_node, GraphElement *p_graph_element);
-	void register_output_port(int p_id, int p_port, TextureButton *p_button);
+	void register_output_port(int p_id, int p_port, VisualShaderNode::PortType p_port_type, TextureButton *p_button);
 	void register_parameter_name(int p_id, LineEdit *p_parameter_name);
 	void register_default_input_button(int p_node_id, int p_port_id, Button *p_button);
 	void register_expression_edit(int p_node_id, CodeEdit *p_expression_edit);
@@ -275,6 +276,7 @@ class VisualShaderEditor : public ShaderEditor {
 	bool shader_preview_showed = true;
 
 	LineEdit *param_filter = nullptr;
+	MenuButton *preview_tools = nullptr;
 	String selected_param_id;
 	Tree *parameters = nullptr;
 	HashMap<String, PropertyInfo> parameter_props;
@@ -315,6 +317,11 @@ class VisualShaderEditor : public ShaderEditor {
 	enum ToolsMenuOptions {
 		EXPAND_ALL,
 		COLLAPSE_ALL
+	};
+
+	enum PreviewToolsMenuOptions {
+		COPY_PARAMS_FROM_MATERIAL,
+		PASTE_PARAMS_TO_MATERIAL,
 	};
 
 #ifdef MINGW_ENABLED
@@ -366,6 +373,7 @@ class VisualShaderEditor : public ShaderEditor {
 	void _show_add_varying_dialog();
 	void _show_remove_varying_dialog();
 
+	void _preview_tools_menu_option(int p_idx);
 	void _clear_preview_param();
 	void _update_preview_parameter_list();
 	bool _update_preview_parameter_tree();
@@ -680,6 +688,7 @@ public:
 
 class VisualShaderNodePortPreview : public Control {
 	GDCLASS(VisualShaderNodePortPreview, Control);
+	TextureRect *checkerboard = nullptr;
 	Ref<VisualShader> shader;
 	Ref<ShaderMaterial> preview_mat;
 	VisualShader::Type type = VisualShader::Type::TYPE_MAX;
@@ -692,7 +701,7 @@ protected:
 
 public:
 	virtual Size2 get_minimum_size() const override;
-	void setup(const Ref<VisualShader> &p_shader, Ref<ShaderMaterial> &p_preview_material, VisualShader::Type p_type, int p_node, int p_port, bool p_is_valid);
+	void setup(const Ref<VisualShader> &p_shader, Ref<ShaderMaterial> &p_preview_material, VisualShader::Type p_type, bool p_has_transparency, int p_node, int p_port, bool p_is_valid);
 };
 
 class VisualShaderConversionPlugin : public EditorResourceConversionPlugin {

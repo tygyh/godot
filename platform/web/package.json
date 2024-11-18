@@ -19,6 +19,6 @@
     "eslint-plugin-html": "^8.1.1",
     "espree": "^10.0.1",
     "globals": "^15.9.0",
-    "jsdoc": "^4.0.3"
+    "jsdoc": "^4.0.4"
   }
 }
